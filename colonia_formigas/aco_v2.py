@@ -18,8 +18,8 @@ class ACO:
         return np.ones((num_pontos, num_pontos))
 
     def calcular_distancia(self, p1, p2):
-        # Calcula a distância Manhattan entre dois pontos (p1 e p2)
-        return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+        # Calcula a distância euclidiana entre dois pontos (p1 e p2)
+        return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
     def calcular_probabilidade(self, i, j, feromonio, visibilidade, visitados):
         # Calcula a probabilidade de uma formiga se mover do ponto i para o ponto j
@@ -62,7 +62,7 @@ class ACO:
             distancias = []  # Armazena o custo de cada rota
 
             for _ in range(self.num_formigas):
-                rota = [0]  # Começa a rota no ponto inicial (0 - "R")
+                rota = [0]  # Começa a rota no ponto inicial (0)
                 visitados = set(rota)  # Conjunto de pontos visitados
 
                 while len(rota) < num_pontos:
@@ -105,13 +105,8 @@ def ler_tsp(arquivo):
 
     return pontos
 
-# Função para converter índices em letras
-def indices_para_letras(indices):
-    letras = ['R', 'A', 'B', 'C', 'D']
-    return [letras[i] for i in indices]
-
 # Exemplo de uso
-arquivo_tsp = 'matriz.tsp'
+arquivo_tsp = 'pisi_2\wi29.tsp'
 pontos = ler_tsp(arquivo_tsp)  # Lê os pontos a partir do arquivo TSP
 pontos_lista = [pontos[i] for i in sorted(pontos.keys())]  # Organiza os pontos na ordem dos índices
 
@@ -120,13 +115,13 @@ rotas = []
 for i in range(30):
     aco = ACO(num_formigas=10, num_iteracoes=100, alfa=1.0, beta=2.0, evaporacao=0.5, Q=100)
     melhor_rota, menor_custo = aco.encontrar_melhor_rota(pontos_lista)
-    # Converte a rota encontrada em uma string com letras
-    rota_str = ' '.join(indices_para_letras(melhor_rota))
+    rota_str = ' '.join(map(str, melhor_rota))
     rotas.append(rota_str)
     print(f'Execução {i+1}:')
     print('Melhor rota:', rota_str)
     print('Menor custo:', menor_custo)
     print('---')
+
 
 # Contar a frequência de cada rota
 contador_rotas = Counter(rotas)

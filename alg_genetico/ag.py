@@ -1,129 +1,92 @@
-import numpy as np
-from collections import Counter
+from random import random, randint, shuffle, sample
+import tsplib95 as tsplib
 
-# Classe que implementa o Algoritmo Genético (GA)
-class AG:
-    def __init__(self, num_individuos, num_geracoes, taxa_mutacao, taxa_cruzamento):
-        # Inicializa os parâmetros do AG
-        self.num_individuos = num_individuos  # Número de indivíduos na população
-        self.num_geracoes = num_geracoes  # Número de gerações
-        self.taxa_mutacao = taxa_mutacao  # Taxa de mutação
-        self.taxa_cruzamento = taxa_cruzamento  # Taxa de cruzamento
+def carregar_cidades(file_path):
+    tsp = tsplib.load(file_path)
+    return {i: coord for i, coord in enumerate(tsp.node_coords.values())}
 
-    def calcular_distancia(self, p1, p2):
-        # Calcula a distância Manhattan entre dois pontos (p1 e p2)
-        return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+def gerar_populacao_inicial(cidades, n_pop=20):
+    return [shuffle(list(cidades.keys())) or list(cidades.keys()) for _ in range(n_pop)]
 
-    def inicializar_populacao(self, num_pontos):
-        # Inicializa a população com rotas sequenciais e faz mutações para gerar diversidade
-        populacao = []
-        for i in range(self.num_individuos):
-            individuo = list(range(1, num_pontos))  # Ignora o ponto inicial/final (0)
-            individuo = self.mutacao_deterministica(individuo)
-            populacao.append(individuo)
-        return populacao
+def calcular_distancia_total(caminho, cidades):
+    return sum(((cidades[caminho[i]][0] - cidades[caminho[i+1]][0])**2 + 
+                (cidades[caminho[i]][1] - cidades[caminho[i+1]][1])**2)**0.5
+               for i in range(len(caminho) - 1))
 
-    def mutacao_deterministica(self, individuo):
-        # Aplica mutação permutando dois elementos de maneira determinística
-        for i in range(len(individuo)):
-            if i < len(individuo) - 1:
-                # Simples troca de posições vizinhas (sem usar random)
-                individuo[i], individuo[i + 1] = individuo[i + 1], individuo[i]
-        return individuo
+def avaliar_populacao(populacao, cidades):
+    return [calcular_distancia_total(ind, cidades) for ind in populacao]
 
-    def cruzamento_deterministico(self, pai1, pai2):
-        # Implementa cruzamento sem usar random, de forma determinística
-        ponto_corte = len(pai1) // 2  # Divide a rota ao meio
-        filho = pai1[:ponto_corte] + [gene for gene in pai2 if gene not in pai1[:ponto_corte]]
-        return filho
+def selecao_por_torneio(populacao, aptidoes, k):
+    selecionados = []
+    for _ in range(2):
+        competidores = sample(range(len(populacao)), k)
+        aptidoes_torneio = [aptidoes[i] for i in competidores]
+        melhor = competidores[aptidoes_torneio.index(min(aptidoes_torneio))]
+        selecionados.append(populacao[melhor])
+    return selecionados
 
-    def calcular_fitness(self, individuo, pontos):
-        # Calcula o custo total (distância) da rota do indivíduo
-        rota = [0] + individuo + [0]  # Adiciona o ponto inicial e final (0)
-        return sum(self.calcular_distancia(pontos[rota[i]], pontos[rota[i+1]]) for i in range(len(rota) - 1))
+def cruzamento_pmx(p1, p2):
+    filho = [None] * len(p1)
+    ponto1, ponto2 = sorted([randint(0, len(p1) - 1) for _ in range(2)])
+    filho[ponto1:ponto2+1] = p1[ponto1:ponto2+1]
+    
+    mapa = {p1[i]: p2[i] for i in range(ponto1, ponto2+1) if p2[i] not in filho}
+    
+    for i in range(len(filho)):
+        if filho[i] is None:
+            gene = p2[i]
+            while gene in mapa:
+                gene = mapa[gene]
+            filho[i] = gene
+    return filho
 
-    def selecionar_pais(self, populacao, fitness):
-        # Seleção de pais de forma determinística: escolher os dois melhores
-        indices_melhores = np.argsort(fitness)[:2]  # Seleciona os dois melhores indivíduos
-        return populacao[indices_melhores[0]], populacao[indices_melhores[1]]
+def cruzamento_e_mutacao(populacao, aptidoes, cidades, taxa_cruzamento, taxa_mutacao, tamanho_torneio):
+    nova_populacao = []
+    for _ in range(len(populacao) // 2):
+        pais = selecao_por_torneio(populacao, aptidoes, tamanho_torneio)
+        if random() < taxa_cruzamento:
+            filhos = [cruzamento_pmx(pais[0], pais[1]), cruzamento_pmx(pais[1], pais[0])]
+        else:
+            filhos = pais
+        
+        filhos = [mutar_individuo(filho, taxa_mutacao, cidades) for filho in filhos]
+        nova_populacao.extend(filhos)
+    return nova_populacao
 
-    def encontrar_melhor_rota(self, pontos):
-        num_pontos = len(pontos)
-        populacao = self.inicializar_populacao(num_pontos)
-        melhor_rota = None
-        menor_custo = float('inf')
+def mutar_individuo(individuo, taxa_mutacao, cidades):
+    if random() < taxa_mutacao:
+        c1, c2 = sample(range(len(cidades)), 2)
+        individuo[c1], individuo[c2] = individuo[c2], individuo[c1]
+    return individuo
 
-        for geracao in range(self.num_geracoes):
-            fitness = [self.calcular_fitness(individuo, pontos) for individuo in populacao]
+def evoluir(cidades, taxa_cruzamento, taxa_mutacao, tamanho_torneio, n_geracoes):
+    populacao = gerar_populacao_inicial(cidades)
+    aptidoes = avaliar_populacao(populacao, cidades)
 
-            # Atualiza a melhor rota e custo
-            for i in range(len(populacao)):
-                if fitness[i] < menor_custo:
-                    menor_custo = fitness[i]
-                    melhor_rota = populacao[i]
+    for _ in range(n_geracoes):
+        nova_populacao = cruzamento_e_mutacao(populacao, aptidoes, cidades, taxa_cruzamento, taxa_mutacao, tamanho_torneio)
+        aptidoes_novas = avaliar_populacao(nova_populacao, cidades)
+        populacao, aptidoes = selecao_elitista(populacao, nova_populacao, aptidoes, aptidoes_novas)
 
-            # Seleção de pais
-            pai1, pai2 = self.selecionar_pais(populacao, fitness)
+    melhor_rota = populacao[aptidoes.index(min(aptidoes))]
+    melhor_custo = min(aptidoes)
+    
+    return melhor_rota, melhor_custo
 
-            # Gerar nova população através de cruzamento e mutação
-            nova_populacao = []
-            while len(nova_populacao) < self.num_individuos:
-                filho = self.cruzamento_deterministico(pai1, pai2)
-                if np.random.rand() < self.taxa_mutacao:
-                    filho = self.mutacao_deterministica(filho)
-                nova_populacao.append(filho)
+def selecao_elitista(populacao_atual, nova_populacao, aptidoes_atual, aptidoes_novas):
+    populacao_combinada = populacao_atual + nova_populacao
+    aptidoes_combinadas = aptidoes_atual + aptidoes_novas
+    sobreviventes = sorted(zip(populacao_combinada, aptidoes_combinadas), key=lambda x: x[1])[:len(populacao_atual)]
+    return [ind for ind, _ in sobreviventes], [apt for _, apt in sobreviventes]
 
-            populacao = nova_populacao
-
-        return melhor_rota, menor_custo
-
-def ler_tsp(arquivo):
-    # Lê o arquivo TSP e extrai os pontos
-    with open(arquivo, 'r') as f:
-        linhas = f.readlines()
-
-    pontos = {}
-    for linha in linhas:
-        if linha.strip() == 'EOF':
-            break
-        if linha.strip() and not linha.startswith(('NAME', 'TYPE', 'COMMENT', 'DIMENSION', 'EDGE_WEIGHT_TYPE', 'NODE_COORD_SECTION')):
-            partes = linha.split()
-            indice = int(partes[0])
-            x = float(partes[1])
-            y = float(partes[2])
-            pontos[indice - 1] = (x, y)  # Subtrai 1 para ajustar ao índice zero
-
-    return pontos
-
-def indices_para_letras(indices):
-    letras = ['R', 'A', 'B', 'C', 'D']
-    return [letras[i] for i in indices]
-
-# Exemplo de uso
-arquivo_tsp = 'alg_genetico/matriz.tsp'
-pontos = ler_tsp(arquivo_tsp)  # Lê os pontos a partir do arquivo TSP
-pontos_lista = [pontos[i] for i in sorted(pontos.keys())]  # Organiza os pontos na ordem dos índices
-
-# Loop para executar o AG e contar as rotas
-rotas = []
-for i in range(1000):
-    ag = AG(num_individuos=10, num_geracoes=100, taxa_mutacao=0.1, taxa_cruzamento=0.8)
-    melhor_rota, menor_custo = ag.encontrar_melhor_rota(pontos_lista)
-    # Converte a rota encontrada em uma string para facilitar a visualização
-    rota_str = ' '.join(indices_para_letras(melhor_rota))
-    rotas.append(rota_str)
-    print(f'Execução {i+1}:')
-    print('Melhor rota:', rota_str)
-    print('Menor custo:', menor_custo)
-    print('---')
-
-# Contar a frequência de cada rota
-contador_rotas = Counter(rotas)
-rota_mais_frequente = contador_rotas.most_common(1)[0]
-
-print('Rotas encontradas e suas frequências:')
-for rota, frequencia in contador_rotas.items():
-    print(f'Rota: {rota}, Frequência: {frequencia}')
-
-print('---')
-print(f'Rota mais frequente: {rota_mais_frequente[0]}, Frequência: {rota_mais_frequente[1]}')
+def main():
+    cidades = carregar_cidades("pisi_2\wi29.tsp")
+    taxa_cruzamento = 0.8
+    taxa_mutacao = 0.01
+    tamanho_torneio = 4
+    n_geracoes = 10000
+    
+    melhor_rota, menor_custo = evoluir(cidades, taxa_cruzamento, taxa_mutacao, tamanho_torneio, n_geracoes)
+    print(f"A melhor rota encontrada foi: {melhor_rota} com custo {menor_custo} dronômetros.")
+for i in range(30):
+    main()
