@@ -80,7 +80,7 @@ def selecao_elitista(populacao_atual, nova_populacao, aptidoes_atual, aptidoes_n
     return [ind for ind, _ in sobreviventes], [apt for _, apt in sobreviventes]
 
 def main():
-    cidades = entrada("wi29.tsp")
+    cidades = entrada("d198.tsp")
     taxa_cruzamento = 0.8
     taxa_mutacao = 0.01
     tamanho_torneio = 4
